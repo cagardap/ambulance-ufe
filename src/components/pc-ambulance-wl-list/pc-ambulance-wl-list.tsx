@@ -12,7 +12,7 @@ export class PcAmbulanceWlList {
   private async getWaitingPatientsAsync(){
     return await Promise.resolve(
       [{
-          name: 'Jožko Púčik',
+          name: 'Jožko Púčik a jeho kariera',
           patientId: '10001',
           since: new Date(Date.now() - 10 * 60).toISOString(),
           estimatedStart: new Date(Date.now() + 65 * 60).toISOString(),
