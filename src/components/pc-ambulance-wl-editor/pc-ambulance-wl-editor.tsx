@@ -27,7 +27,7 @@ export class PcAmbulanceWlEditor {
       this.entry = {
         id: '@new',
         patientId: '',
-        waitingSince: Date.now().toLocaleString(),
+        waitingSince: new Date().toISOString(),
         estimatedDurationMinutes: 15,
       };
       this.entry.estimatedStart = (await this.assumedEntryDateAsync()).toISOString();
