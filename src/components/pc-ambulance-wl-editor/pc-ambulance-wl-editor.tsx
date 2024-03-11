@@ -21,17 +21,13 @@ export class PcAmbulanceWlEditor {
 
   private formElement: HTMLFormElement;
 
-  private handleSliderInput(event: Event) {
-    this.duration = +(event.target as HTMLInputElement).value;
-  }
-
   private async getWaitingEntryAsync(): Promise<WaitingListEntry> {
     if (this.entryId === '@new') {
       this.isValid = false;
       this.entry = {
         id: '@new',
         patientId: '',
-        waitingSince: new Date().toISOString(),
+        waitingSince: Date.now().toLocaleString(),
         estimatedDurationMinutes: 15,
       };
       this.entry.estimatedStart = (await this.assumedEntryDateAsync()).toISOString();
@@ -97,9 +93,93 @@ export class PcAmbulanceWlEditor {
     );
   }
 
+  private handleInputEvent(ev: InputEvent): string {
+    const target = ev.target as HTMLInputElement;
+    // check validity of elements
+    this.isValid = true;
+    for (let i = 0; i < this.formElement.children.length; i++) {
+      const element = this.formElement.children[i];
+      if ('reportValidity' in element) {
+        const valid = (element as HTMLInputElement).reportValidity();
+        this.isValid &&= valid;
+      }
+    }
+    return target.value;
+  }
+  
+  private async updateEntry() {
+    try {
+      const api = AmbulanceWaitingListApiFactory(undefined, this.apiBase);
+      const response =
+        this.entryId === '@new' ? await api.createWaitingListEntry(this.ambulanceId, this.entry) : await api.updateWaitingListEntry(this.ambulanceId, this.entryId, this.entry);
+      if (response.status < 299) {
+        this.editorClosed.emit('store');
+      } else {
+        this.errorMessage = `Cannot store entry: ${response.statusText}`;
+      }
+    } catch (err: any) {
+      this.errorMessage = `Cannot store entry: ${err.message || 'unknown'}`;
+    }
+  }
+
+  private async deleteEntry() {
+    try {
+      const response = await AmbulanceWaitingListApiFactory(undefined, this.apiBase).deleteWaitingListEntry(this.ambulanceId, this.entryId);
+      if (response.status < 299) {
+        this.editorClosed.emit('delete');
+      } else {
+        this.errorMessage = `Cannot delete entry: ${response.statusText}`;
+      }
+    } catch (err: any) {
+      this.errorMessage = `Cannot delete entry: ${err.message || 'unknown'}`;
+    }
+  }
+
   async componentWillLoad() {
     this.getWaitingEntryAsync();
     this.getConditions();
+  }
+
+  private handleSliderInput(event: Event) {
+    this.duration = +(event.target as HTMLInputElement).value;
+  }
+
+  private renderConditions() {
+    let conditions = this.conditions || [];
+    // we want to have this.entry`s condition in the selection list
+    if (this.entry?.condition) {
+      const index = conditions.findIndex(condition => condition.code === this.entry.condition.code);
+      if (index < 0) {
+        conditions = [this.entry.condition, ...conditions];
+      }
+    }
+    return (
+      <md-filled-select label="Dôvod návštevy" display-text={this.entry?.condition?.value} oninput={(ev: InputEvent) => this.handleCondition(ev)}>
+        <md-icon slot="leading-icon">sick</md-icon>
+        {this.entry?.condition?.reference ? (
+          <md-icon slot="trailing-icon" class="link" onclick={() => window.open(this.entry.condition.reference, '_blank')}>
+            open_in_new
+          </md-icon>
+        ) : undefined}
+        {conditions.map(condition => {
+          return (
+            <md-select-option value={condition.code} selected={condition.code === this.entry?.condition?.code}>
+              <div slot="headline">{condition.value}</div>
+            </md-select-option>
+          );
+        })}
+      </md-filled-select>
+    );
+  }
+
+  private handleCondition(ev: InputEvent) {
+    if (this.entry) {
+      const code = this.handleInputEvent(ev);
+      const condition = this.conditions.find(condition => condition.code === code);
+      this.entry.condition = Object.assign({}, condition);
+      this.entry.estimatedDurationMinutes = condition.typicalDurationMinutes;
+      this.duration = condition.typicalDurationMinutes;
+    }
   }
 
   render() {
@@ -190,85 +270,5 @@ export class PcAmbulanceWlEditor {
         </div>
       </Host>
     );
-  }
-
-  private handleInputEvent(ev: InputEvent): string {
-    const target = ev.target as HTMLInputElement;
-    // check validity of elements
-    this.isValid = true;
-    for (let i = 0; i < this.formElement.children.length; i++) {
-      const element = this.formElement.children[i];
-      if ('reportValidity' in element) {
-        const valid = (element as HTMLInputElement).reportValidity();
-        this.isValid &&= valid;
-      }
-    }
-    return target.value;
-  }
-
-  private async updateEntry() {
-    try {
-      const api = AmbulanceWaitingListApiFactory(undefined, this.apiBase);
-      const response =
-        this.entryId === '@new' ? await api.createWaitingListEntry(this.ambulanceId, this.entry) : await api.updateWaitingListEntry(this.ambulanceId, this.entryId, this.entry);
-      if (response.status < 299) {
-        this.editorClosed.emit('store');
-      } else {
-        this.errorMessage = `Cannot store entry: ${response.statusText}`;
-      }
-    } catch (err: any) {
-      this.errorMessage = `Cannot store entry: ${err.message || 'unknown'}`;
-    }
-  }
-
-  private async deleteEntry() {
-    try {
-      const response = await AmbulanceWaitingListApiFactory(undefined, this.apiBase).deleteWaitingListEntry(this.ambulanceId, this.entryId);
-      if (response.status < 299) {
-        this.editorClosed.emit('delete');
-      } else {
-        this.errorMessage = `Cannot delete entry: ${response.statusText}`;
-      }
-    } catch (err: any) {
-      this.errorMessage = `Cannot delete entry: ${err.message || 'unknown'}`;
-    }
-  }
-
-  private renderConditions() {
-    let conditions = this.conditions || [];
-    // we want to have this.entry`s condition in the selection list
-    if (this.entry?.condition) {
-      const index = conditions.findIndex(condition => condition.code === this.entry.condition.code);
-      if (index < 0) {
-        conditions = [this.entry.condition, ...conditions];
-      }
-    }
-    return (
-      <md-filled-select label="Dôvod návštevy" display-text={this.entry?.condition?.value} oninput={(ev: InputEvent) => this.handleCondition(ev)}>
-        <md-icon slot="leading-icon">sick</md-icon>
-        {this.entry?.condition?.reference ? (
-          <md-icon slot="trailing-icon" class="link" onclick={() => window.open(this.entry.condition.reference, '_blank')}>
-            open_in_new
-          </md-icon>
-        ) : undefined}
-        {conditions.map(condition => {
-          return (
-            <md-select-option value={condition.code} selected={condition.code === this.entry?.condition?.code}>
-              <div slot="headline">{condition.value}</div>
-            </md-select-option>
-          );
-        })}
-      </md-filled-select>
-    );
-  }
-
-  private handleCondition(ev: InputEvent) {
-    if (this.entry) {
-      const code = this.handleInputEvent(ev);
-      const condition = this.conditions.find(condition => condition.code === code);
-      this.entry.condition = Object.assign({}, condition);
-      this.entry.estimatedDurationMinutes = condition.typicalDurationMinutes;
-      this.duration = condition.typicalDurationMinutes;
-    }
   }
 }
